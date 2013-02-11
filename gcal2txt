@@ -1,0 +1,211 @@
+#!/usr/bin/php
+<?php
+/**
+ * Gcal2Txt
+ * Googleカレンダーからスケジュールを取得し、それをテキスト形式で出力します
+ * 発声を目的としているため、数字は漢字に変換しており、見やすさ重視ではありません。
+ * 
+ * @package		Gcal2Txt
+ * @author		松井 健太郎 (Kentaro Matsui) <info@ke-tai.org>
+ * @copyright	ke-tai.org
+ * @license		BSD
+ */
+
+$gt = new Gcal2Txt();
+$gt->run();
+
+
+/**
+ * Gcal2Txtクラス
+ */
+class Gcal2Txt
+{
+	/**
+	 * タイトル
+	 */
+	protected $title = '%JDATE%　%JWEEK%曜日の予定';
+
+	/**
+	 * 対象カレンダー定義
+	 */
+	protected $calendar = array(
+		array('userid' => 'fvijvohm91uifvd9hratehf65k%40group.calendar.google.com', 'magiccookie' => 'public'),		// IT勉強会カレンダー
+	);
+
+	/**
+	 * カレンダー取得範囲
+	 */
+	protected $period = "+1 day";
+
+	/**
+	 * コンストラクタ
+	 * @param array $config 設定を格納した連想配列
+	 */
+	public function __construct($config = array())
+	{
+		// configで指定された設定でクラス変数を上書き
+		foreach ($config as $key => $val) {
+			$this->$key = $val;
+		}
+	}
+
+	/**
+	 * 実行
+	 */
+	public function run()
+	{
+		// 日付範囲を決定
+		$start_date = date('Y-m-d', time());
+		$end_date = date('Y-m-d', strtotime($this->period, strtotime($start_date . ' 00:00:00')) - 1);
+
+		// スケジュールを取得して、それを出力
+		$msg = $this->getSchedule($start_date, $end_date);
+		echo $msg;
+	}
+
+	/**
+	 * Googleカレンダー情報取得
+	 * GoogleカレンダーのAPIにアクセスし、その情報を整形して返す
+	 * @param string start_date 取得範囲開始日(Y-m-d形式)
+	 * @param string end_date 取得範囲終了日(Y-m-d形式)
+	 * @return string テキスト形式になった全てのカレンダー情報
+	 */
+	protected function getSchedule($start_date, $end_date)
+	{
+		if ($start_date == $end_date) {
+			$date_str = $start_date;
+		} else {
+			$date_str = $start_date . ' 〜 ' . $end_date;
+		}
+		$title = strtr($this->title, array(
+			'%JDATE%' => $this->num2kan_decimal(date('n', strtotime($start_date))) . '月' . $this->num2kan_decimal(date('j', strtotime($start_date))) . '日' ,
+			'%JWEEK%' => $this->num2Jweek(date('w', strtotime($start_date))),
+		));
+		$msg = $title . "\n";
+		$msg .= "\n";
+
+		// カレンダー定義の数だけ繰り返す
+		$i = 0;
+		foreach ($this->calendar as $row) {
+			$url = 'http://www.google.com/calendar/feeds/'
+				. $row['userid']
+				. '/' . $row['magiccookie']
+				. '/full?'
+				. 'start-min=' . $start_date . 'T00:00:00'
+				. '&start-max=' . $end_date . 'T23:59:59'
+				. '&orderby=starttime&sortorder=a&singleevents=true';
+			$xml = simplexml_load_file($url);
+
+			// テキスト形式にして格納
+			$i++;
+			$msg .= $this->num2kan_decimal($i) . '　' . $this->xml2Text($xml);
+		}
+
+		return $msg;
+	}
+
+	/**
+	 * XML形式->Text変換
+	 * Googleカレンダーから取得したXMLをテキスト形式に変換して返す
+	 * @param object $xml Googleカレンダーから取得したXMLオブジェクト
+	 * @return string テキスト形式に変換されたカレンダー情報
+	 */
+	protected function xml2Text($xml)
+	{
+		// カレンダーのタイトル
+		$msg = $xml->title . "\n";
+
+		// 予定の数だけ繰り返し
+		foreach ($xml->entry as $item) {
+			$gd = $item->children('http://schemas.google.com/g/2005');
+			$msg .= '　';
+			if (10 == strlen($gd->when->attributes()->startTime) and 10 == strlen($gd->when->attributes()->endTime)) {
+				// 終日指定の場合
+				$start_date = date('m/d', strtotime($gd->when->attributes()->startTime));
+				$end_date = date('m/d', strtotime($gd->when->attributes()->endTime) - 1);
+				if ($start_date == $end_date) {
+					// 範囲が1日だけの場合
+					$msg .= $start_date;
+				} else {
+					// 範囲が複数日の場合
+					$msg .= sprintf('%s～%s', $start_date, $end_date);
+				}
+			} else {
+				// 時刻指定がある場合
+				$start_hour = date('G', strtotime($gd->when->attributes()->startTime));
+				$start_min = intval(date('i', strtotime($gd->when->attributes()->startTime)));
+				$end_hour = date('G', strtotime($gd->when->attributes()->endTime));
+				$end_min = intval(date('i', strtotime($gd->when->attributes()->endTime)));
+				$msg .= sprintf('%s時', $this->num2kan_decimal($start_hour));
+				if (0 != $start_min) {
+					$msg .= sprintf('%s分', $this->num2kan_decimal($start_min));
+				}
+				$msg .= 'から';
+				$msg .= sprintf('%s時', $this->num2kan_decimal($end_hour));
+				if (0 != $end_min) {
+					$msg .= sprintf('%s分', $this->num2kan_decimal($end_min));
+				}
+			}
+			$msg .= '　' . $item->title . "\n";
+		}
+		if (empty($xml->entry)) {
+			$msg .= '　なし';
+		}
+		$msg .= "\n";
+
+		return $msg;
+	}
+
+	/**
+	 * 曜日数値->日本語曜日変換
+	 */
+	protected function num2Jweek($num)
+	{
+		$week_arr = array('日', '月', '火', '水', '木', '金', '土');
+		return $week_arr[$num];
+	}
+
+	/**
+	 * 半角数字を漢数字に変換する（位取り記法）
+	 * @param string $instr 半角数字
+	 * 	小数、負数に対応；指数表記には未対応
+	 * 	カンマは削除
+	 * @return string 漢数字
+	 * @link http://www.pahoo.org/e-soul/webtech/php03/php03-05-01.shtm
+	 */
+	protected function num2kan_decimal($instr)
+	{
+		static $kantbl1 = array(0=>'', 1=>'一', 2=>'二', 3=>'三', 4=>'四', 5=>'五', 6=>'六', 7=>'七', 8=>'八', 9=>'九', '.'=>'．', '-'=>'−');
+		static $kantbl2 = array(0=>'', 1=>'十', 2=>'百', 3=>'千');
+		static $kantbl3 = array(0=>'', 1=>'万', 2=>'億', 3=>'兆', 4=>'京');
+
+		$outstr = '';
+		$len = strlen($instr);
+		$m = (int)($len / 4);
+		// 一、万、億、兆の繰り返し
+		for ($i = 0; $i <= $m; $i++) {
+			$s2 = '';
+			// 一、十、百、千の繰り返し
+			for ($j = 0; $j < 4; $j++) {
+				$pos = $len - $i * 4 - $j - 1;
+				if ($pos >= 0) {
+					$ch  = substr($instr, $pos, 1);
+					$ch1 = isset($kantbl1[$ch]) ? $kantbl1[$ch] : '';
+					$ch2 = isset($kantbl2[$j])  ? $kantbl2[$j]  : '';
+					// 冒頭が「一」の場合の処理
+					if ($ch1 != '') {
+						if ($ch1 == '一' && $ch2 != '') {
+							$s2 = $ch2 . $s2;
+						} else {
+							$s2 = $ch1 . $ch2 . $s2;
+						}
+					}
+				}
+			}
+			if ($s2 != '')  $outstr = $s2 . $kantbl3[$i] . $outstr;
+		}
+
+		return $outstr;
+	}
+}
+
