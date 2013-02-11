@@ -149,7 +149,7 @@ class Gcal2Txt
 			$msg .= '　' . $item->title . "\n";
 		}
 		if (empty($xml->entry)) {
-			$msg .= '　なし';
+			$msg .= "　なし\n";
 		}
 		$msg .= "\n";
 
