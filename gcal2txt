@@ -121,15 +121,7 @@ class Gcal2Txt
 			$msg .= '　';
 			if (10 == strlen($gd->when->attributes()->startTime) and 10 == strlen($gd->when->attributes()->endTime)) {
 				// 終日指定の場合
-				$start_date = date('m/d', strtotime($gd->when->attributes()->startTime));
-				$end_date = date('m/d', strtotime($gd->when->attributes()->endTime) - 1);
-				if ($start_date == $end_date) {
-					// 範囲が1日だけの場合
-					$msg .= $start_date;
-				} else {
-					// 範囲が複数日の場合
-					$msg .= sprintf('%s～%s', $start_date, $end_date);
-				}
+				$msg .= '終日';
 			} else {
 				// 時刻指定がある場合
 				$start_hour = date('G', strtotime($gd->when->attributes()->startTime));
