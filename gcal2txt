@@ -76,8 +76,8 @@ class Gcal2Txt
 		$msg = $this->getSchedule($start_date, $end_date);
 
 		// オプションで整形
-		if (isset($this->options['length'])) {
-			// 長さ指定がある場合はカット
+		if (isset($this->options['length']) and mb_strlen($msg, self::ENCODING) > $this->options['length']) {
+			// 長さ指定がありカットの必要がある場合
 			$msg = mb_strcut($msg, 0, intval($this->options['length']), self::ENCODING) . self::CUT_MESSAGE;
 		}
 		if (!isset($this->options['debug'])) {
