@@ -11,7 +11,13 @@
  * @license		BSD
  */
 
-$gt = new Gcal2Txt();
+// オプションを取得
+$short_opts = "";
+$long_opts = array("length:", "debug");
+$config = array('options' => getopt($short_opts, $long_opts));
+
+// 実行
+$gt = new Gcal2Txt($config);
 $gt->run();
 
 
@@ -20,6 +26,9 @@ $gt->run();
  */
 class Gcal2Txt
 {
+	const ENCODING = "UTF-8";
+	const CUT_MESSAGE = "\n長すぎたため省略\n";
+
 	/**
 	 * タイトル
 	 */
@@ -36,6 +45,11 @@ class Gcal2Txt
 	 * カレンダー取得範囲
 	 */
 	protected $period = "+1 day";
+
+	/**
+	 * 動作オプション
+	 */
+	protected $options = array();
 
 	/**
 	 * コンストラクタ
@@ -60,6 +74,16 @@ class Gcal2Txt
 
 		// スケジュールを取得して、それを出力
 		$msg = $this->getSchedule($start_date, $end_date);
+
+		// オプションで整形
+		if (isset($this->options['length'])) {
+			// 長さ指定がある場合はカット
+			$msg = mb_strcut($msg, 0, intval($this->options['length']), self::ENCODING) . self::CUT_MESSAGE;
+		}
+		if (!isset($this->options['debug'])) {
+			// デバッグモードじゃない場合は、読み上げのため1行にまとめて出す
+			$msg = strtr($msg, array("\n" => "。"));
+		}
 		echo $msg;
 	}
 
