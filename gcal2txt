@@ -98,7 +98,7 @@ class Gcal2Txt
 
 			// テキスト形式にして格納
 			$i++;
-			$msg .= $this->num2kan_decimal($i) . '　' . $this->xml2Text($xml);
+			$msg .= $i . '　' . $this->xml2Text($xml);
 		}
 
 		return $msg;
