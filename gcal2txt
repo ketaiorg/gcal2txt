@@ -38,13 +38,8 @@ class Gcal2Txt
 	 * 対象カレンダー定義
 	 */
 	protected $calendar = array(
-		'fvijvohm91uifvd9hratehf65k%40group.calendar.google.com',		// IT勉強会カレンダー
+		array('userid' => 'fvijvohm91uifvd9hratehf65k%40group.calendar.google.com', 'magiccookie' => 'public'),		// IT勉強会カレンダー
 	);
-
-	/**
-	 * APIキー
-	 */
-	protected $apikey = '<YOUR API KEY>';
 
 	/**
 	 * カレンダー取得範囲
@@ -116,42 +111,52 @@ class Gcal2Txt
 		// カレンダー定義の数だけ繰り返す
 		$i = 0;
 		foreach ($this->calendar as $row) {
-			$url = sprintf('https://www.googleapis.com/calendar/v3/calendars/%s/events?', $row)
-				. sprintf('key=%s&timeMin=%s&timeMax=%s&maxResults=%d&orderBy=startTime&singleEvents=true', $this->apikey, $start_date . 'T00:00:00Z', $end_date . 'T23:59:59Z', PHP_INT_MAX);
-
-			$json = json_decode(file_get_contents($url));
+			$url = 'http://www.google.com/calendar/feeds/'
+				. $row['userid']
+				. '/' . $row['magiccookie']
+				. '/basic?'
+				. 'start-min=' . $start_date . 'T00:00:00'
+				. '&start-max=' . $end_date . 'T23:59:59'
+				. '&orderby=starttime&sortorder=a&singleevents=true';
+			$xml = simplexml_load_file($url);
 
 			// テキスト形式にして格納
 			$i++;
-			$msg .= $i . '　' . $this->json2Text($json);
+			$msg .= $i . '　' . $this->xml2Text($xml);
 		}
 
 		return $msg;
 	}
 
 	/**
-	 * JSON形式->Text変換
-	 * Googleカレンダーから取得したJSONをテキスト形式に変換して返す
-	 * @param arr $json Googleカレンダーから取得したJSONオブジェクト
+	 * XML形式->Text変換
+	 * Googleカレンダーから取得したXMLをテキスト形式に変換して返す
+	 * @param object $xml Googleカレンダーから取得したXMLオブジェクト
 	 * @return string テキスト形式に変換されたカレンダー情報
 	 */
-	protected function json2Text($json)
+	protected function xml2Text($xml)
 	{
 		// カレンダーのタイトル
-		$msg = $json->summary . "\n";
+		$msg = $xml->title . "\n";
 
 		// 予定の数だけ繰り返し
-		foreach ($json->items as $item) {
+		foreach ($xml->entry as $item) {
+			$gd = $item->children('http://schemas.google.com/g/2005');
 			$msg .= '　';
-			if (10 == strlen($item->start->dateTime) and 10 == strlen($item->end->dateTime)) {
-				// 終日指定の場合
-				$msg .= '終日';
+			$tmp_arr = explode('<br>', html_entity_decode($item->summary));		// 1行目が日時
+			$tmp_period = mb_substr(strtr(html_entity_decode($tmp_arr[0]), array("\n" => '', 'JST' => '', '期間: ' => '', ' ' => '')), 17);		// 余分なものを取り除く
+
+			if (13 > mb_strlen($tmp_period)) {
+				// 終日の場合
+				$msg .= '終日、' . $item->title;
 			} else {
-				// 時刻指定がある場合
-				$start_hour = date('G', strtotime($item->start->dateTime));
-				$start_min = intval(date('i', strtotime($item->start->dateTime)));
-				$end_hour = date('G', strtotime($item->end->dateTime));
-				$end_min = intval(date('i', strtotime($item->end->dateTime)));
+				// 時刻設定がある場合、時刻を抽出
+				$start_hour = mb_substr($tmp_period, 0, 2);
+				$start_min = mb_substr($tmp_period, 3, 2);
+				$end_hour = mb_substr($tmp_period, 8, 2);
+				$end_min = mb_substr($tmp_period, 11, 2);
+
+				// メッセージを組み立て
 				$msg .= sprintf('%s時', $this->num2kan_decimal($start_hour));
 				if (0 != $start_min) {
 					$msg .= sprintf('%s分', $this->num2kan_decimal($start_min));
@@ -161,8 +166,8 @@ class Gcal2Txt
 				if (0 != $end_min) {
 					$msg .= sprintf('%s分', $this->num2kan_decimal($end_min));
 				}
+				$msg .= '、' . $item->title;
 			}
-			$msg .= '　' . $item->summary . "\n";
 		}
 		if (empty($xml->entry)) {
 			$msg .= "　なし\n";
